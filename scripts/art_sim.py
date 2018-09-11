@@ -83,7 +83,7 @@ art_paired(prof=args.profile,
            rl=args.readlength,
            ml=args.insertsize,
            s=args.s,
-           out='art_ins_100')
+           out='art_ins_100_')
 end = timer()
 print("Operation took {0} seconds".format(end-start))
 
@@ -97,7 +97,7 @@ art_paired(prof=args.profile,
            rl=args.readlength,
            ml=args.insertsize,
            s=args.s,
-           out='art_del_100')
+           out='art_del_100_')
 end = timer()
 print("Operation took {0} seconds".format(end-start))
 

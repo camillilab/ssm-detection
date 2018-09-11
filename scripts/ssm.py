@@ -159,10 +159,13 @@ for ssm in ssm_data:
                                       start=rpos-coverage_range,
                                       end=rpos+(len(seed) * num_repeats)+coverage_range)
 
-    coverage_data[chr_name, rpos, gpos, seed, num_repeats, code] = (read_depth, average_depth)
+    # try to calculate reads in this region
+    reads_in_region = len(bam.fetch(start=rpos-150, end=rpos+(len(seed) * num_repeats)+150))
+
+    coverage_data[chr_name, rpos, gpos, seed, num_repeats, code] = (read_depth, average_depth, reads_in_region)
 
 
-print('chr_name\trpos\tgpos\trepeat\tlength\tcode\treadcov\tavgcov\t')
+print('chr_name\trpos\tgpos\trepeat\tlength\tcode\treadcov\tavgcov\ttotalreads')
 for cov in coverage_data:
     chr_name = cov[0]
     rpos = cov[1]
@@ -172,7 +175,8 @@ for cov in coverage_data:
     code = cov[5]
     read_depth = coverage_data[cov][0]
     average_depth = coverage_data[cov][1]
-    print(chr_name, rpos, gpos, seed, num_repeats, code, read_depth, average_depth, sep='\t')
+    reads_in_region = coverage_data[cov][2]
+    print(chr_name, rpos, gpos, seed, num_repeats, code, read_depth, average_depth, reads_in_region, sep='\t')
 
 
 # attempt to remove all files?
