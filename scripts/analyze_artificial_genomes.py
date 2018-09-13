@@ -73,17 +73,17 @@ def main():
 
     # path to save bowtie2 map logs
     bt2_log_path_base = os.path.join(os.getcwd(), 'bt2_log')
-    if not bt2_log_path_base:
+    if not os.path.exists(bt2_log_path_base):
         os.mkdir(bt2_log_path_base)
 
     # path to save ssm logs
     ssm_log_path_base = os.path.join(os.getcwd(), 'ssm_log')
-    if not ssm_log_path_base:
+    if not os.path.exists(ssm_log_path_base):
         os.mkdir(ssm_log_path_base)
 
     # path to save bam files
     bam_path_base = os.path.join(os.getcwd(), 'bam')
-    if not bam_path_base:
+    if not os.path.exists(bam_path_base):
         os.mkdir(bam_path_base)
 
     # now for the simulation!
