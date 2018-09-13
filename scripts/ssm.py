@@ -160,7 +160,9 @@ for ssm in ssm_data:
                                       end=rpos+(len(seed) * num_repeats)+coverage_range)
 
     # try to calculate reads in this region...need to adjust start/end based on read length
-    reads_in_region = len(bam.fetch(name=chr_name, start=rpos-150, end=rpos+(len(seed) * num_repeats)+150))
+    # divide by two if paired end?
+    # only count to the
+    reads_in_region = len(bam.fetch(name=chr_name, start=rpos-100, end=rpos-10)) / 2
 
     coverage_data[chr_name, rpos, gpos, seed, num_repeats, code] = (read_depth, average_depth, reads_in_region)
 
