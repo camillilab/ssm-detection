@@ -11,7 +11,6 @@ import os
 import subprocess
 from numpy import arange
 import shutil
-from timeit import default_timer as timer
 
 
 # construct and subprocess art commands
@@ -32,6 +31,10 @@ parser.add_argument('-pe', help='Switch for paired-end simulation', action='stor
 parser.add_argument('-s', help="Stddev for fragment length")
 parser.add_argument('-l', '--readlength', help="Length of read to simulate")
 parser.add_argument('-i', '--insertsize', help="Mean insert length. Default is 3x read length", default=-1)
+parser.add_argument('-a', '--start', help="Starting percent of reads", type=int)
+parser.add_argument('-b', '--end', help="End percent of reads", type=int)
+parser.add_argument('-c', '--step', help="Step percent size", type=int)
+
 # parser.add_argument('-o', help='Output fastq file prefix')
 
 
@@ -41,27 +44,14 @@ args = parser.parse_args()
 # Then, we want to successively simulate various abundance profiles by combining reads
 # To keep the analysis simple, let's just test various levels of insertion OR deletion relative to control
 # At first, let's just test 25%, 50%, and 75% mixes
-step_size = 0.1
+step_size = args.step / 100
+start = args.start / 100
+end = args.end / 100
 
 # Control simulation
 
-# 1: Just the reference genome
-print("simulating reference genome alone...")
-start = timer()
-ref = os.path.join(args.refpath, 'art_ref.fasta')
-art_paired(prof=args.profile,
-           r=ref,
-           nr=args.numreads,
-           rl=args.readlength,
-           ml=args.insertsize,
-           s=args.s,
-           out='art_ref')
-end = timer()
-print("Operation took {0} seconds".format(end-start))
-
 # 2: 100% standard insert genome
 print("simulating insert genome...")
-start = timer()
 ref = os.path.join(args.refpath, 'art_ref_ssr.fasta')
 art_paired(prof=args.profile,
            r=ref,
@@ -70,42 +60,13 @@ art_paired(prof=args.profile,
            ml=args.insertsize,
            s=args.s,
            out='art_ref_ssr')
-end = timer()
-print("Operation took {0} seconds".format(end-start))
-
-# 3: 100% All inserted
-print("simulating insertion genome alone...")
-start = timer()
-ref = os.path.join(args.refpath, 'art_ref_ssr_ins.fasta')
-art_paired(prof=args.profile,
-           r=ref,
-           nr=args.numreads,
-           rl=args.readlength,
-           ml=args.insertsize,
-           s=args.s,
-           out='art_ins_100_')
-end = timer()
-print("Operation took {0} seconds".format(end-start))
-
-# 4: 100% All deleted
-print("simulating deletion genome alone...")
-start = timer()
-ref = os.path.join(args.refpath, 'art_ref_ssr_del.fasta')
-art_paired(prof=args.profile,
-           r=ref,
-           nr=args.numreads,
-           rl=args.readlength,
-           ml=args.insertsize,
-           s=args.s,
-           out='art_del_100_')
-end = timer()
-print("Operation took {0} seconds".format(end-start))
 
 
 # Now create various combined fastq sequencing files based off step size
 
 # insertion profiles
-for i in arange(step_size, 1.0, step_size):
+for i in arange(start, end + step_size, step_size):
+    i = round(i, 2)  # fix i for floating errors
     print("Now doing insert {0}".format(i))
     ref_reads = str(int(int(args.numreads) * (1 - i)))
     ins_reads = str(int(int(args.numreads) * i))
@@ -144,7 +105,8 @@ for i in arange(step_size, 1.0, step_size):
     os.remove('art_insi2.fq')
 
 # deletion profiles
-for i in arange(step_size, 1.0, step_size):
+for i in arange(start, end + step_size, step_size):
+    i = round(i, 2)
     ref_reads = str(int(int(args.numreads) * (1 - i)))
     del_reads = str(int(int(args.numreads) * i))
     print("Now doing del {0}".format(i))
