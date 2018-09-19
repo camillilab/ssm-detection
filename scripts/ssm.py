@@ -41,8 +41,8 @@ bam_file = args.mapping
 # DEBUG
 # reference_file = os.path.join(os.getcwd(), '.fa')
 # bam_file = os.path.join(os.getcwd(), 'BAM.bam')
-num_processes = 8
-num_threads = 8
+num_processes = 6
+num_threads = 6
 min_seed_repeat_length = 1
 max_seed_repeat_length = 5
 repeat_threshold = 10
@@ -104,20 +104,36 @@ for record in reference.records:
     name = record.name
     seq = record.seq
 
-    # Split the main alignment file by read group
-    outfile = os.path.join(os.getcwd(), name + '.bam')
-    bam.dump(outfile, name=name)
+    outfile = os.path.join(os.getcwd(), name + '_sorted.bam')
+    outfile_index = os.path.join(os.getcwd(), name + '_sorted.bam.bai')
 
-    # Create a new AlignmentFile instance using the read subset, sort and index to grab reads around SSM sites
-    # maybe have some skip or name assignment if only one sequence?
-    new_bam = jakelib.AlignmentFile(outfile, chr_name=name, use_threads=num_threads)
-    new_bam.give_name(name)
+    # gross hack for one ref
+    if len(reference.records) == 1:
+        print("Only one record detected, renaming MAIN bam and index to {0}...".format(name))
+        os.rename('MAIN_sorted.bam', outfile)
+        os.rename('MAIN_sorted.bam.bai', outfile_index)
+        new_bam = bam
+        new_bam.give_name(name)
+        new_bam.sorted_alignment_file = outfile
+        new_dict = {k: repeat_dict[(name, k)] for k in name_pos_dict[name]}
 
-    # Grab a subset of the repeat dict involving this read group
-    # Can't think of a better way to do this...maybe have a different dict with the repeat positions detected?
-    new_dict = {k: repeat_dict[(name, k)] for k in name_pos_dict[name]}
+    else:
+        print("Processing {0}...".format(name))
+
+        # Split the main alignment file by read group
+        bam.dump(outfile, name=name)
+
+        # Create a new AlignmentFile instance using the read subset, sort and index to grab reads around SSM sites
+        # maybe have some skip or name assignment if only one sequence?
+        new_bam = jakelib.AlignmentFile(outfile, chr_name=name, use_threads=num_threads)
+        new_bam.give_name(name)
+
+        # Grab a subset of the repeat dict involving this read group
+        # Can't think of a better way to do this...maybe have a different dict with the repeat positions detected?
+        new_dict = {k: repeat_dict[(name, k)] for k in name_pos_dict[name]}
 
     # Do the magic
+    print("Launching {0} processes...".format(num_processes))
     data = jakelib.find_ssm(new_dict, new_bam, seq, procs=num_processes)
     print("{0} SSM site(s) found in {1}".format(len(data), name))
 
@@ -192,9 +208,9 @@ try:
     for record in reference.records:
         name = record.name
         # clean bam files
-        os.remove(name+'.bam')
-        os.remove(name+'_sorted.bam')
-        os.remove(name+'_sorted.bam.bai')
+        os.remove(os.path.join(os.getcwd(), name+'.bam'))
+        os.remove(os.path.join(os.getcwd(), name + '_sorted.bam'))
+        os.remove(os.path.join(os.getcwd(), name + '_sorted.bam.bai'))
 except FileNotFoundError:
     pass
 
