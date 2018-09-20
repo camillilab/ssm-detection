@@ -19,6 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('reference', help='Reference sequence. FASTA format. May be a series of contigs in a scaffold.')
 parser.add_argument('mapping', help='BAM file of reads on reference sequence.')
 
+# TODO Add these args in
 """
 # OPTIONAL ARGUMENTS
 parser.add_argument('-p', '--processes', help='Number of processes to use, should be equal to CPU cores', default=1)
@@ -107,7 +108,7 @@ for record in reference.records:
     outfile = os.path.join(os.getcwd(), name + '_sorted.bam')
     outfile_index = os.path.join(os.getcwd(), name + '_sorted.bam.bai')
 
-    # gross hack for one ref
+    # gross hack for one ref TODO clean this up
     if len(reference.records) == 1:
         print("Only one record detected, renaming MAIN bam and index to {0}...".format(name))
         os.rename('MAIN_sorted.bam', outfile)
@@ -177,7 +178,8 @@ for ssm in ssm_data:
 
     # try to calculate reads in this region...need to adjust start/end based on read length
     # divide by two if paired end?
-    # only count to the
+    # TODO Make read counting adaptive...samtools stats? Use GATK 25% rule?
+    read_length = bam.get_read_length()
     reads_in_region = len(bam.fetch(name=chr_name, start=rpos-100, end=rpos-10)) / 2
 
     coverage_data[chr_name, rpos, gpos, seed, num_repeats, code] = (read_depth, average_depth, reads_in_region)
