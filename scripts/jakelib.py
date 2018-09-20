@@ -136,6 +136,13 @@ class AlignmentFile:
                 pass
         return depth / len(data)
 
+    # gets read length of a bam file using samtools stats and text processing
+    def get_read_length(self):
+        process = subprocess.run('samtools stats ' + self.alignment_file + " | grep ^RL | cut -f 2- | awk '{print $1}'",
+                                 shell=True, stdout=subprocess.PIPE, encoding='utf-8',
+                                 universal_newlines=True, bufsize=-1)
+        return process.stdout.split('\n')[0]
+
 
 # Isolated sequence tools
 # Returns a list containing all unique nucleotide combinations of a given range
@@ -203,6 +210,7 @@ def detect_pattern(seq, pattern):
 def scan_for_repeats(seq, pattern, num_repeat_threshold=5):
 
     # pull up matches for the minimum threshold
+    # TODO Alter behavior to allow for an absolute length rather than a multiple of a pattern seed?
     match_positions = detect_pattern(seq, pattern=pattern*num_repeat_threshold)
     last_pos = -1
     for pos in match_positions:
@@ -291,7 +299,7 @@ def _find_ssm_worker(pos, repeat, repeat_size, aln, refseq):
 
     # fetch reads containing insertion or deletion patterns matching the length of the repeat at the area of interest
     pattern_cigar = '.*' + str(len(repeat)) + '[ID]'
-    # eventually auto-detect the start/end based on read size?
+    # TODO eventually auto-detect the start/end based on read size?
     reads = aln.filter(start=pos-500, end=pos+500, name=aln.region_name, cigar=pattern_cigar)
 
     # see if these reads suggest a site-specific SSM event
@@ -305,6 +313,7 @@ def _find_ssm_worker(pos, repeat, repeat_size, aln, refseq):
         read_cigar_parts = parse_cigar(read_cigar)
 
         # find the positions within the read that suggest I/D of our pattern length
+        # TODO We are missing any reads that happen to have a correct nt in the SSM region
         id_areas = find_id_read_areas(read_cigar_parts)
         repeat_id_areas = [k for k in id_areas if k[2] == len(repeat)]
 
