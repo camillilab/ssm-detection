@@ -42,8 +42,8 @@ bam_file = args.mapping
 # DEBUG
 # reference_file = os.path.join(os.getcwd(), '.fa')
 # bam_file = os.path.join(os.getcwd(), 'BAM.bam')
-num_processes = 6
-num_threads = 6
+num_processes = 8
+num_threads = 8
 min_seed_repeat_length = 1
 max_seed_repeat_length = 5
 repeat_threshold = 10
@@ -83,7 +83,7 @@ print("{0} patterns discovered.".format(len(repeat_dict)))
 
 # Save patterns to file
 with open('patterns.txt', 'w') as f:
-    f.write('chr_name\tgpos\tpattern\tnum')
+    f.write('chr_name\tgpos\tpattern\tnum\n')
     for key in repeat_dict:
         f.write('{0}\t{1}\t{2}\t{3}\n'.format(key[0], key[1], repeat_dict[key][0], repeat_dict[key][1]))
 
@@ -179,12 +179,13 @@ for ssm in ssm_data:
     # try to calculate reads in this region...need to adjust start/end based on read length
     # divide by two if paired end?
     # TODO Make read counting adaptive...samtools stats? Use GATK 25% rule?
-    read_length = bam.get_read_length()
+    # TODO this runs a samtools stats for every SSM! Move out of the loop
+    # read_length = bam.get_read_length()
     reads_in_region = len(bam.fetch(name=chr_name, start=rpos-100, end=rpos-10)) / 2
 
     coverage_data[chr_name, rpos, gpos, seed, num_repeats, code] = (read_depth, average_depth, reads_in_region)
 
-
+# TODO add coverage threshold
 print('chr_name\trpos\tgpos\trepeat\tlength\tcode\treadcov\tavgcov\ttotalreads')
 for cov in coverage_data:
     chr_name = cov[0]
@@ -210,6 +211,7 @@ try:
     for record in reference.records:
         name = record.name
         # clean bam files
+        # TODO this doesn't work if there was only one record. Change behavior
         os.remove(os.path.join(os.getcwd(), name+'.bam'))
         os.remove(os.path.join(os.getcwd(), name + '_sorted.bam'))
         os.remove(os.path.join(os.getcwd(), name + '_sorted.bam.bai'))
