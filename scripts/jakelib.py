@@ -345,6 +345,10 @@ def _find_ssm_worker(pos, repeat, repeat_size, aln, refseq):
 
                 ssm_data[(aln.region_name, pos, repeat, repeat_size, id_code)] += (j / len(repeat))
 
+                # DEBUG AREA FOR READ DETECTION
+                if (repeat == 'AGTC') and (repeat_size == 32):
+                    print(read_cigar+'\t'+read)
+
     return ssm_data
 
 

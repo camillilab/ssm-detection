@@ -44,9 +44,9 @@ bam_file = args.mapping
 # bam_file = os.path.join(os.getcwd(), 'BAM.bam')
 num_processes = 8
 num_threads = 8
-min_seed_repeat_length = 1
-max_seed_repeat_length = 5
-repeat_threshold = 10
+min_seed_repeat_length = 2
+max_seed_repeat_length = 7
+repeat_threshold = 5
 coverage_range = 50  # looks this many bases around repeat region to determine average depth
 
 # PREPROCESSING
@@ -220,7 +220,7 @@ except FileNotFoundError:
 
 print("Done!")
 
-
+# TODO Theoretically I could use some Illumina substitution error rate as a possible measure for background noise.
 
 
 
