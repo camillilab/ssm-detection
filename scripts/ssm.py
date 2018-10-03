@@ -44,10 +44,13 @@ bam_file = args.mapping
 # bam_file = os.path.join(os.getcwd(), 'BAM.bam')
 num_processes = 6
 num_threads = 6
-min_seed_repeat_length = 4
-max_seed_repeat_length = 4
+min_seed_repeat_length = 1
+max_seed_repeat_length = 7
 repeat_threshold = 5
 coverage_range = 50  # looks this many bases around repeat region to determine average depth
+rqbp = 0.1  # percent of read length that must enclose the repeat region
+cov_threshold = 0.005  # percent of reads over totoal possible reads necessary to be reported.
+
 
 # PREPROCESSING
 
@@ -97,7 +100,7 @@ print("Done.")
 # print("{0} reads loaded.".format(bam.num_reads))
 
 read_length = bam.get_read_length()
-read_quality_buffer = round(0.25 * read_length)
+read_quality_buffer = round(rqbp * read_length)
 print("Read length is {0}.\nUsing quality nt buffer of {1}.".format(read_length, read_quality_buffer))
 
 ssm_data = dict()
@@ -201,17 +204,12 @@ for ssm in ssm_data:
         num_reads_in_region = 1
     else:
         # Here, we calculate the leftmost and rightmost position of a read that can capture the entire SSM event
-        print("Grabbing all eligible reads from {0} to {1}...".format(leftmost_read_pos, rightmost_read_pos))
+        # print("Grabbing all eligible reads from {0} to {1}...".format(leftmost_read_pos, rightmost_read_pos))
         reads_in_region = bam.fetch(name=chr_name, start=leftmost_read_pos, end=rightmost_read_pos)
-        with open('allreads.txt', 'w') as outfile:
-                for read in reads_in_region:
-                    outfile.write(read+'\n')
-        num_reads_in_region = len(reads_in_region)
 
     coverage_data[chr_name, rpos, gpos, seed, num_repeats, code] = (read_depth, num_reads_in_region)
 
 # Ratio of reads to possible reads must exceed this threshold to be reported.
-cov_threshold = 0.001
 print('chr_name\trpos\tgpos\trepeat\tlength\tcode\treadcov\ttotalreads')
 for cov in coverage_data:
     chr_name = cov[0]
