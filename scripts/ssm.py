@@ -206,6 +206,7 @@ for ssm in ssm_data:
         # Here, we calculate the leftmost and rightmost position of a read that can capture the entire SSM event
         # print("Grabbing all eligible reads from {0} to {1}...".format(leftmost_read_pos, rightmost_read_pos))
         reads_in_region = bam.fetch(name=chr_name, start=leftmost_read_pos, end=rightmost_read_pos)
+        num_reads_in_region = len(reads_in_region)
 
     coverage_data[chr_name, rpos, gpos, seed, num_repeats, code] = (read_depth, num_reads_in_region)
 
