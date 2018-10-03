@@ -42,10 +42,10 @@ bam_file = args.mapping
 # DEBUG
 # reference_file = os.path.join(os.getcwd(), '.fa')
 # bam_file = os.path.join(os.getcwd(), 'BAM.bam')
-num_processes = 8
-num_threads = 8
-min_seed_repeat_length = 2
-max_seed_repeat_length = 7
+num_processes = 6
+num_threads = 6
+min_seed_repeat_length = 4
+max_seed_repeat_length = 4
 repeat_threshold = 5
 coverage_range = 50  # looks this many bases around repeat region to determine average depth
 
@@ -87,14 +87,18 @@ with open('patterns.txt', 'w') as f:
     for key in repeat_dict:
         f.write('{0}\t{1}\t{2}\t{3}\n'.format(key[0], key[1], repeat_dict[key][0], repeat_dict[key][1]))
 
-
 # READ ASSESSMENT
 
 # load alignment file
 print("Reading, sorting, and indexing alignment file {0}...".format(bam_file))
 bam = jakelib.AlignmentFile(bam_file, chr_name='MAIN', use_threads=num_threads)
 print("Done.")
-# print("{0} reads.".format(bam.num_reads))
+
+# print("{0} reads loaded.".format(bam.num_reads))
+
+read_length = bam.get_read_length()
+read_quality_buffer = round(0.25 * read_length)
+print("Read length is {0}.\nUsing quality nt buffer of {1}.".format(read_length, read_quality_buffer))
 
 ssm_data = dict()
 ssm_positive_nodes = list()
@@ -135,7 +139,7 @@ for record in reference.records:
 
     # Do the magic
     print("Launching {0} processes...".format(num_processes))
-    data = jakelib.find_ssm(new_dict, new_bam, seq, procs=num_processes)
+    data = jakelib.find_ssm(new_dict, new_bam, read_quality_buffer, procs=num_processes)
     print("{0} SSM site(s) found in {1}".format(len(data), name))
 
     if len(data) > 0:
@@ -153,12 +157,9 @@ print("{0} total SSM sites found over {1} sequence(s)".format(len(ssm_data), len
 
 accession_num = 'NULL'
 
-# now calculate coverage +- some bp around the repeat area
 # probably easiest to report the average depth surrounding the area using samtools depth
-# is it best to use samtools depth, and compare to the "read agreement"? unsure
-# mpileup may have useful information related to phred qualities
-# probably better to implement this in the above loop to avoid re-sorting bam files
 print("Detecting coverage for SSM sites...")
+
 coverage_data = dict()
 for ssm in ssm_data:
 
@@ -172,21 +173,46 @@ for ssm in ssm_data:
     file = os.path.join(os.getcwd(), chr_name + '_sorted.bam')
 
     bam = jakelib.AlignmentFile(file, chr_name=chr_name, sort=False, index=False)
-    average_depth = bam.average_depth(name=chr_name,
-                                      start=rpos-coverage_range,
-                                      end=rpos+(len(seed) * num_repeats)+coverage_range)
 
-    # try to calculate reads in this region...need to adjust start/end based on read length
-    # divide by two if paired end?
-    # TODO Make read counting adaptive...samtools stats? Use GATK 25% rule?
-    # TODO this runs a samtools stats for every SSM! Move out of the loop
-    # read_length = bam.get_read_length()
-    reads_in_region = len(bam.fetch(name=chr_name, start=rpos-100, end=rpos-10)) / 2
+    # TODO Use GATK 25% rule? Or make an option to set this
+    # Might be nice to include some measure of read quality!
 
-    coverage_data[chr_name, rpos, gpos, seed, num_repeats, code] = (read_depth, average_depth, reads_in_region)
+    # If there is an insertion, the total region to cover is the size of the repeat plus a monomer. Opp for deletion
+    capture_size = 0
+    if code == "I":
+        capture_size = (len(seed) * num_repeats) + len(seed)
+    if code == "D":
+        capture_size = (len(seed) * num_repeats) - len(seed)
 
-# TODO add coverage threshold
-print('chr_name\trpos\tgpos\trepeat\tlength\tcode\treadcov\tavgcov\ttotalreads')
+    # read quality buffer for reads that accurately capture the position
+    # TODO this needs to be reflected in both stages ie. the actual SSM detection stage
+
+    # positions in which a read could possibly detect our SSM
+    leftmost_read_pos = rpos - (read_length - read_quality_buffer - capture_size)
+    rightmost_read_pos = rpos - read_quality_buffer
+
+    # check to see if the read length is long enough to accurately capture the repeat using the specified buffer
+    if (capture_size + 2*read_quality_buffer) > read_length:
+        print("The region {0}x{1} cannot be captured with the read length of {2} and quality buffer of {3}! "
+              "Any SSM events detected may be result of paired end reads".format(seed,
+                                                                                 num_repeats,
+                                                                                 read_length,
+                                                                                 read_quality_buffer))
+        num_reads_in_region = 1
+    else:
+        # Here, we calculate the leftmost and rightmost position of a read that can capture the entire SSM event
+        print("Grabbing all eligible reads from {0} to {1}...".format(leftmost_read_pos, rightmost_read_pos))
+        reads_in_region = bam.fetch(name=chr_name, start=leftmost_read_pos, end=rightmost_read_pos)
+        with open('allreads.txt', 'w') as outfile:
+                for read in reads_in_region:
+                    outfile.write(read+'\n')
+        num_reads_in_region = len(reads_in_region)
+
+    coverage_data[chr_name, rpos, gpos, seed, num_repeats, code] = (read_depth, num_reads_in_region)
+
+# Ratio of reads to possible reads must exceed this threshold to be reported.
+cov_threshold = 0.001
+print('chr_name\trpos\tgpos\trepeat\tlength\tcode\treadcov\ttotalreads')
 for cov in coverage_data:
     chr_name = cov[0]
     rpos = cov[1]
@@ -195,32 +221,37 @@ for cov in coverage_data:
     num_repeats = cov[4]
     code = cov[5]
     read_depth = coverage_data[cov][0]
-    average_depth = coverage_data[cov][1]
-    reads_in_region = coverage_data[cov][2]
-    print(chr_name, rpos, gpos, seed, num_repeats, code, read_depth, average_depth, reads_in_region, sep='\t')
+    num_reads_in_region = coverage_data[cov][1]
+    qual = read_depth / num_reads_in_region
+
+    if qual >= cov_threshold:
+        print(chr_name, rpos, gpos, seed, num_repeats, code, read_depth, num_reads_in_region, sep='\t')
 
 
 # attempt to remove all files?
+print("Cleaning generated bam files...")
 try:
     os.remove('MAIN_sorted.bam')
     os.remove('MAIN_sorted.bam.bai')
 except FileNotFoundError:
     pass
 
-try:
-    for record in reference.records:
-        name = record.name
-        # clean bam files
-        # TODO this doesn't work if there was only one record. Change behavior
-        os.remove(os.path.join(os.getcwd(), name+'.bam'))
-        os.remove(os.path.join(os.getcwd(), name + '_sorted.bam'))
-        os.remove(os.path.join(os.getcwd(), name + '_sorted.bam.bai'))
-except FileNotFoundError:
-    pass
+files_to_remove = list()
+for record in reference.records:
+    name = record.name
+    files_to_remove.append(name + '.bam')
+    files_to_remove.append(name + '_sorted.bam')
+    files_to_remove.append(name + '_sorted.bam.bai')
+
+for file in files_to_remove:
+    try:
+        os.remove(os.path.join(os.getcwd(), file))
+    except FileNotFoundError:
+        pass
 
 print("Done!")
 
-# TODO Theoretically I could use some Illumina substitution error rate as a possible measure for background noise.
+# TODO Theoretically I could use some Illumina indel error rate and Phred as a possible measure for background noise.
 
 
 

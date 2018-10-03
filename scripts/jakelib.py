@@ -100,7 +100,16 @@ class AlignmentFile:
             process = subprocess.run(['samtools', 'view',
                                       self.sorted_alignment_file, name+':'+str(start)+'-'+str(end), '-@', self.threads],
                                      stdout=subprocess.PIPE, encoding='utf-8', universal_newlines=True, bufsize=-1)
-        return process.stdout.split('\n')
+
+
+        # Note: there is a massive bug where using samtools view and a region includes all reads that reach into the
+        # starting area. For example, view:1000-2000 with a read length of 150 will include all reads starting at
+        # 850! Thus, we need to sift these.
+
+        reads = process.stdout.split('\n')[:-1]  # lop off the last guy; its an empty element
+        processed_reads = [k for k in reads if int(k.split('\t')[3]) >= start]
+
+        return processed_reads
 
     # filters reads based on CIGAR; returns POS, CIGAR
     def filter(self, start=-1, end=-1, name='', cigar='.*'):
@@ -141,7 +150,7 @@ class AlignmentFile:
         process = subprocess.run('samtools stats ' + self.alignment_file + " | grep ^RL | cut -f 2- | awk '{print $1}'",
                                  shell=True, stdout=subprocess.PIPE, encoding='utf-8',
                                  universal_newlines=True, bufsize=-1)
-        return process.stdout.split('\n')[0]
+        return int(process.stdout.split('\n')[0])
 
 
 # Isolated sequence tools
@@ -277,10 +286,10 @@ def find_id_read_areas(cigar_parts):
 
 
 # detect ssm read patterns
-def find_ssm(repeat_dict, aln, refseq, procs=1):
+def find_ssm(repeat_dict, aln, rqb, procs=1):
     ssm_data = dict()
     with ProcessPoolExecutor(max_workers=procs) as executor:
-        futures = {executor.submit(_find_ssm_worker, k, repeat_dict[k][0], repeat_dict[k][1], aln, refseq):
+        futures = {executor.submit(_find_ssm_worker, k, repeat_dict[k][0], repeat_dict[k][1], aln, rqb):
                    k for k in repeat_dict}
         for future in as_completed(futures):
             try:
@@ -292,7 +301,7 @@ def find_ssm(repeat_dict, aln, refseq, procs=1):
 
 
 # worker function for find_ssm
-def _find_ssm_worker(pos, repeat, repeat_size, aln, refseq):
+def _find_ssm_worker(pos, repeat, repeat_size, aln, rqb):
 
     # data container
     ssm_data = defaultdict(float)
@@ -305,6 +314,8 @@ def _find_ssm_worker(pos, repeat, repeat_size, aln, refseq):
     # see if these reads suggest a site-specific SSM event
     for read in reads:
 
+        # print(read)
+
         # split the read to get a list of parameters in the read
         params = read.split('\t')
 
@@ -313,13 +324,14 @@ def _find_ssm_worker(pos, repeat, repeat_size, aln, refseq):
         read_cigar_parts = parse_cigar(read_cigar)
 
         # find the positions within the read that suggest I/D of our pattern length
-        # TODO We are missing any reads that happen to have a correct nt in the SSM region
         id_areas = find_id_read_areas(read_cigar_parts)
         repeat_id_areas = [k for k in id_areas if k[2] == len(repeat)]
 
-        # get the read and the reference position in which the read starts
+        # get the read, read length and the reference position in which the read starts
         read_seq = params[9]
         read_pos = int(params[3])
+        read_length = len(read_seq)
+        capture_size = 0
 
         for id_area in repeat_id_areas:
 
@@ -335,19 +347,37 @@ def _find_ssm_worker(pos, repeat, repeat_size, aln, refseq):
             if abs_id_area == expected_pos_left or abs_id_area == expected_pos_right:
                 # we have a positional match!
 
-                # now see if what the read suggests is actually the repeat
-                # add an average agreement (min=0, max=1) to the dict
-                read_pattern_seq = read_seq[id_pos:id_pos+id_length]
-                j = 0
-                for i in range(0, len(repeat)):
-                    if read_pattern_seq[i] == repeat[i]:
-                        j += 1
+                # verify that the read meets quality standards
+                if id_code == "I":
+                    capture_size = (len(repeat) * repeat_size) + len(repeat)
+                if id_code == "D":
+                    capture_size = (len(repeat) * repeat_size) - len(repeat)
 
-                ssm_data[(aln.region_name, pos, repeat, repeat_size, id_code)] += (j / len(repeat))
+                # positions in which a read could possibly detect our SSM
+                leftmost_read_pos = pos - (read_length - rqb - capture_size)
+                rightmost_read_pos = pos - rqb
+
+                if (read_pos >= leftmost_read_pos) and (read_pos <= rightmost_read_pos):
+                    # now see if what the read suggests is actually the repeat
+                    # add an average agreement (min=0, max=1) to the dict
+                    read_pattern_seq = read_seq[id_pos:id_pos+id_length]
+                    j = 0
+                    for i in range(0, len(repeat)):
+                        if read_pattern_seq[i] == repeat[i]:
+                            j += 1
+
+                    ssm_data[(aln.region_name, pos, repeat, repeat_size, id_code)] += (j / len(repeat))
+
+                    # print("Read at {0} passed with LPOS {1} and RPOS {2}".format(read_pos, leftmost_read_pos, rightmost_read_pos))
+
+
+                else:
+                    # print("Read at {0} failed with LPOS {1} and RPOS {2}".format(read_pos, leftmost_read_pos, rightmost_read_pos))
+                    pass
 
                 # DEBUG AREA FOR READ DETECTION
-                if (repeat == 'AGTC') and (repeat_size == 32):
-                    print(read_cigar+'\t'+read)
+                #if (repeat == 'AGTC') and (repeat_size == 32):
+                #    print(read_cigar+'\t'+read)
 
     return ssm_data
 
