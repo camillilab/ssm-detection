@@ -10,6 +10,7 @@ import jakelib
 from collections import defaultdict
 import argparse
 import os
+import csv
 
 
 # ARGPARSE
@@ -44,12 +45,13 @@ bam_file = args.mapping
 # bam_file = os.path.join(os.getcwd(), 'BAM.bam')
 num_processes = 6
 num_threads = 6
-min_seed_repeat_length = 1
-max_seed_repeat_length = 7
+min_seed_repeat_length = 4
+max_seed_repeat_length = 4
 repeat_threshold = 5
 coverage_range = 50  # looks this many bases around repeat region to determine average depth
 rqbp = 0.1  # percent of read length that must enclose the repeat region
-cov_threshold = 0.005  # percent of reads over totoal possible reads necessary to be reported.
+cov_threshold = 0.005  # percent of reads over total possible reads necessary to be reported.
+result_file = os.path.join(os.getcwd(), 'ssm_results.txt')
 
 
 # PREPROCESSING
@@ -181,7 +183,7 @@ for ssm in ssm_data:
     # Might be nice to include some measure of read quality!
 
     # If there is an insertion, the total region to cover is the size of the repeat plus a monomer. Opp for deletion
-    capture_size = 0
+    capture_size = len(seed) * num_repeats
     if code == "I":
         capture_size = (len(seed) * num_repeats) + len(seed)
     if code == "D":
@@ -210,21 +212,27 @@ for ssm in ssm_data:
 
     coverage_data[chr_name, rpos, gpos, seed, num_repeats, code] = (read_depth, num_reads_in_region)
 
-# Ratio of reads to possible reads must exceed this threshold to be reported.
-print('chr_name\trpos\tgpos\trepeat\tlength\tcode\treadcov\ttotalreads')
-for cov in coverage_data:
-    chr_name = cov[0]
-    rpos = cov[1]
-    gpos = cov[2]
-    seed = cov[3]
-    num_repeats = cov[4]
-    code = cov[5]
-    read_depth = coverage_data[cov][0]
-    num_reads_in_region = coverage_data[cov][1]
-    qual = read_depth / num_reads_in_region
+# Write results to file
 
-    if qual >= cov_threshold:
-        print(chr_name, rpos, gpos, seed, num_repeats, code, read_depth, num_reads_in_region, sep='\t')
+print("Writing results to file...")
+with open(result_file, 'w') as r:
+    writer = csv.writer(r, delimiter='\t')
+
+    # Ratio of reads to possible reads must exceed this threshold to be reported.
+    writer.writerow(('chr_name', 'rpos', 'gpos', 'repeat', 'repeat_length', 'indel code', 'ssm_reads', 'totalreads', 'percent SSM'))
+    for cov in coverage_data:
+        chr_name = cov[0]
+        rpos = cov[1]
+        gpos = cov[2]
+        seed = cov[3]
+        num_repeats = cov[4]
+        code = cov[5]
+        read_depth = coverage_data[cov][0]
+        num_reads_in_region = coverage_data[cov][1]
+        qual = read_depth / num_reads_in_region
+
+        if qual >= cov_threshold:
+            writer.writerow((chr_name, rpos, gpos, seed, num_repeats, code, read_depth, num_reads_in_region, qual*100))
 
 
 # attempt to remove all files?
