@@ -38,7 +38,7 @@ loc = args.position
 if loc == -1:
     loc = random.randint(0, len(seq))
 
-new_seq = seq[0:loc-1] + insert_seq + seq[loc-1:len(seq) - 1]
+new_seq = seq[0:loc-1] + insert_seq + seq[loc-1:len(seq)]
 print("Inserted {0}x{1} at position {2}".format(args.seed, args.copies, loc))
 
 # Wrap into a SeqRecord object
